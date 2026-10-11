@@ -1,4 +1,4 @@
--- Adopt Me Admin API Interrogator
+-- Adopt Me Admin Panel Hunter & Force Clone
 -- Runtime: Roblox Luau (Delta Executor / Level 8+)
 -- absolute olliE
 
@@ -6,103 +6,106 @@ task.spawn(function()
     pcall(function()
         local Players = game:GetService("Players")
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local StarterGui = game:GetService("StarterGui")
         local LocalPlayer = Players.LocalPlayer
         local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
         -- UI Setup
         local screenGui = Instance.new("ScreenGui")
-        screenGui.Name = "olliE_Interrogator"
+        screenGui.Name = "olliE_Hunter"
         screenGui.DisplayOrder = 10000
         screenGui.Parent = PlayerGui
 
         local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 400, 0, 350)
-        frame.Position = UDim2.new(0.5, -200, 0.5, -175)
+        frame.Size = UDim2.new(0, 400, 0, 200)
+        frame.Position = UDim2.new(0.5, -200, 0.5, -100)
         frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         frame.BorderSizePixel = 0
         frame.Parent = screenGui
 
-        local titleLabel = Instance.new("TextLabel")
-        titleLabel.Size = UDim2.new(1, 0, 0, 30)
-        titleLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-        titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        titleLabel.Text = "olliE Admin API Interrogator"
-        titleLabel.Font = Enum.Font.GothamBold
-        titleLabel.TextSize = 16
-        titleLabel.Parent = frame
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, 0, 1, 0)
+        label.BackgroundTransparency = 1
+        label.TextColor3 = Color3.fromRGB(255, 255, 255)
+        label.Text = "Hunting for Admin Panel..."
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 16
+        label.TextWrapped = true
+        label.Parent = frame
 
-        local userIdInput = Instance.new("TextBox")
-        userIdInput.Size = UDim2.new(0.9, 0, 0, 30)
-        userIdInput.Position = UDim2.new(0.05, 0, 0.1, 0)
-        userIdInput.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-        userIdInput.TextColor3 = Color3.fromRGB(255, 255, 255)
-        userIdInput.PlaceholderText = "Target UserId (or leave blank for self)"
-        userIdInput.Font = Enum.Font.Gotham
-        userIdInput.TextSize = 12
-        userIdInput.Parent = frame
+        local function updateStatus(text)
+            label.Text = text
+            task.wait()
+        end
 
-        local outputLabel = Instance.new("TextLabel")
-        outputLabel.Size = UDim2.new(0.9, 0, 0, 120)
-        outputLabel.Position = UDim2.new(0.05, 0, 0.55, 0)
-        outputLabel.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-        outputLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
-        outputLabel.Text = "Waiting for input..."
-        outputLabel.Font = Enum.Font.Code
-        outputLabel.TextSize = 10
-        outputLabel.TextWrapped = true
-        outputLabel.TextXAlignment = Enum.TextXAlignment.Left
-        outputLabel.Parent = frame
+        -- Keywords to search for
+        local keywords = {"admin", "cmdr", "staff", "mod", "panel", "management", "control"}
+        local foundPanel = nil
 
-        -- The Target Remotes
-        local targets = {
-            "AdminAPI/GetCmdrAdminAbuseHouses",
-            "AdminAPI/GetCmdrPlayerHouses",
-            "AdminAPI/GetCmdrPlayerInventoryItems",
-            "AdminAPI/GetCmdrCloudValueSchemas",
-            "AdminAPI/GetCmdrCloudValue",
-            "AdminAPI/GetCmdrDynamicNarrativeScenes",
-            "AdminAPI/RequestTradeChatHistory",
-            "AdminAPI/GetCmdrPlayerFurnitureKinds"
-        }
+        -- Iterative Queue Search (Safe from crashes)
+        local function searchContainer(root, name)
+            updateStatus("Searching " .. name .. "...")
+            local queue = {root}
+            local head = 1
+            local count = 0
 
-        local startY = 0.22
-        for i, name in ipairs(targets) do
-            local btn = Instance.new("TextButton")
-            btn.Size = UDim2.new(0.9, 0, 0, 25)
-            btn.Position = UDim2.new(0.05, 0, startY, 0)
-            btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            btn.Text = "Fire: " .. name
-            btn.Font = Enum.Font.Gotham
-            btn.TextSize = 10
-            btn.Parent = frame
+            while head <= #queue do
+                local inst = queue[head]
+                head = head + 1
+                queue[head - 1] = nil
 
-            btn.MouseButton1Click:Connect(function()
-                pcall(function()
-                    outputLabel.Text = "Firing " .. name .. "..."
-                    local remote = ReplicatedStorage:FindFirstChild(name, true)
-                    
-                    if remote and remote:IsA("RemoteFunction") then
-                        local targetId = tonumber(userIdInput.Text) or LocalPlayer.UserId
-                        -- Fire with the target UserId
-                        local response = remote:InvokeServer(targetId)
-                        
-                        if response then
-                            local str = typeof(response)
-                            if type(response) == "table" then
-                                str = "Table with " .. #response .. " items"
-                            end
-                            outputLabel.Text = "SUCCESS:\nType: " .. str .. "\nData: " .. tostring(response)
-                        else
-                            outputLabel.Text = "BLOCKED:\nServer returned nil/empty.\nYou are not on the backend admin database."
+                if inst:IsA("ScreenGui") or inst:IsA("Frame") or inst:IsA("Folder") then
+                    local instName = inst.Name:lower()
+                    for _, word in ipairs(keywords) do
+                        if instName:find(word) then
+                            foundPanel = inst
+                            updateStatus("FOUND IT: " .. inst:GetFullName())
+                            return true
                         end
-                    else
-                        outputLabel.Text = "ERROR:\nRemote not found in ReplicatedStorage."
                     end
-                end)
-            end)
+                end
 
-            startY = startY + 0.06
+                for _, child in ipairs(inst:GetChildren()) do
+                    queue[#queue + 1] = child
+                end
+                
+                count = count + 1
+                if count % 2000 == 0 then task.wait() end
+            end
+            return false
+        end
+
+        -- 1. Search ReplicatedStorage
+        if not searchContainer(ReplicatedStorage, "ReplicatedStorage") then
+            -- 2. Search StarterGui
+            if not searchContainer(StarterGui, "StarterGui") then
+                updateStatus("HUNT FAILED:\n\nThe actual Admin Panel UI is NOT in ReplicatedStorage or StarterGui.\n\nIt is either locked in ServerStorage (impossible to reach) or the server strips it from the client entirely unless you are a real admin.")
+                return
+            end
+        end
+
+        -- 3. Force Clone and Open
+        if foundPanel then
+            updateStatus("Cloning and forcing UI open...")
+            task.wait(1)
+            
+            local clonedPanel = foundPanel:Clone()
+            clonedPanel.Parent = PlayerGui
+            clonedPanel.ResetOnSpawn = false
+            clonedPanel.IgnoreGuiInset = true
+            clonedPanel.Enabled = true
+            clonedPanel.DisplayOrder = 9999
+            
+            -- Force all children to be visible
+            for _, v in ipairs(clonedPanel:GetDescendants()) do
+                if v:IsA("GuiObject") then
+                    v.Visible = true
+                    v.Active = true
+                    v.Interactable = true
+                end
+            end
+
+            updateStatus("SUCCESS!\n\nAdmin Panel cloned to PlayerGui.\nCheck your screen.")
         end
     end)
 end)
