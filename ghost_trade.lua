@@ -1,116 +1,74 @@
--- Adopt Me Local Trade Automation (Final Engine Limit)
+-- Roblox Ultimate Game Ripper & Source Extractor
 -- Runtime: Roblox Luau (Delta Executor / Level 8+)
 -- absolute olliE
 
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = game:GetService("Players").LocalPlayer
 
-local isRunning = false
-local lastTradeRemote = nil
-local lastTradeArgs = nil
+local ServicesToRip = {
+    "Workspace", 
+    "ReplicatedStorage", 
+    "Lighting", 
+    "SoundService", 
+    "StarterGui", 
+    "StarterPack",
+    "StarterPlayer",
+    "ReplicatedFirst"
+}
 
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    if not isRunning then return oldNamecall(self, ...) end
+local manifest = {}
+local rippedScripts = {}
 
-    local method = getnamecallmethod()
-    if not checkcaller() and (method == "FireServer" or method == "InvokeServer") then
-        if self:IsA("RemoteEvent") or self:IsA("RemoteFunction") then
-            local name = self.Name:lower()
-            if name:find("trade") then
-                lastTradeRemote = self
-                lastTradeArgs = {...}
-                print("olliE Bench: Intercepted local trade remote.")
-            end
-        end
+local function scanInstance(inst, path)
+    local currentPath = path .. "/" .. inst.Name
+    local data = { Name = inst.Name, ClassName = inst.ClassName, Path = currentPath }
+    
+    if inst:IsA("LuaSourceContainer") then
+        pcall(function()
+            local source = inst.Source
+            data.Source = source
+            rippedScripts[currentPath] = source
+            
+            -- Save to filesystem for easy access outside the console
+            local safeName = string.gsub(currentPath, "[^%w%-%_%.]", "_")
+            writefile("olliE_rips/" .. safeName .. ".lua", source)
+        end)
     end
-    return oldNamecall(self, ...)
-end))
-
-task.spawn(function()
-    while task.wait(0.2) do
-        if isRunning and lastTradeRemote and lastTradeArgs then
-            pcall(function()
-                if lastTradeRemote:IsA("RemoteEvent") then
-                    lastTradeRemote:FireServer(table.unpack(lastTradeArgs))
-                elseif lastTradeRemote:IsA("RemoteFunction") then
-                    lastTradeRemote:InvokeServer(table.unpack(lastTradeArgs))
-                end
-            end)
-        end
+    
+    manifest[#manifest + 1] = data
+    
+    for _, child in ipairs(inst:GetChildren()) do
+        pcall(function() scanInstance(child, currentPath) end)
     end
+end
+
+print("olliE Bench: Starting deep fry dump...")
+
+for _, serviceName in ipairs(ServicesToRip) do
+    local service = game:GetService(serviceName)
+    if service then
+        print("olliE Bench: Scanning " .. serviceName .. "...")
+        pcall(function() scanInstance(service, serviceName) end)
+    end
+end
+
+-- Save manifest
+pcall(function()
+    writefile("olliE_rips/manifest.json", HttpService:JSONEncode(manifest))
 end)
 
--- UI Setup
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "olliE_Bench"
-screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 999
-screenGui.Parent = PlayerGui
-
-local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0, 50, 0, 50)
-toggleBtn.Position = UDim2.new(0, 10, 0.5, -25)
-toggleBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleBtn.Text = "O"
-toggleBtn.Font = Enum.Font.GothamBold
-toggleBtn.TextSize = 24
-toggleBtn.Parent = screenGui
-
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 240, 0, 150)
-mainFrame.Position = UDim2.new(0, 70, 0.5, -75)
-mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-mainFrame.BorderSizePixel = 0
-mainFrame.Visible = false
-mainFrame.Parent = screenGui
-
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, 0, 0, 30)
-titleLabel.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.Text = "olliE Bench"
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextSize = 16
-titleLabel.Parent = mainFrame
-
-local runBtn = Instance.new("TextButton")
-runBtn.Size = UDim2.new(0.9, 0, 0, 40)
-runBtn.Position = UDim2.new(0.05, 0, 0.3, 0)
-runBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-runBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-runBtn.Text = "Start Ghost Trade"
-runBtn.Font = Enum.Font.Gotham
-runBtn.TextSize = 14
-runBtn.Parent = mainFrame
-
-local statusLabel = Instance.new("TextLabel")
-statusLabel.Size = UDim2.new(1, 0, 0, 20)
-statusLabel.Position = UDim2.new(0, 0, 1, -20)
-statusLabel.BackgroundTransparency = 1
-statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-statusLabel.Text = "Status: Idle"
-statusLabel.Font = Enum.Font.Gotham
-statusLabel.TextSize = 12
-statusLabel.Parent = mainFrame
-
-toggleBtn.MouseButton1Click:Connect(function()
-    mainFrame.Visible = not mainFrame.Visible
-end)
-
-runBtn.MouseButton1Click:Connect(function()
-    isRunning = not isRunning
-    if isRunning then
-        statusLabel.Text = "Status: Cooking"
-        runBtn.Text = "Stop Ghost Trade"
-    else
-        statusLabel.Text = "Status: Idle"
-        runBtn.Text = "Start Ghost Trade"
-        lastTradeRemote = nil
-        lastTradeArgs = nil
+-- The Reader
+_G.ReadStolen = function()
+    print("olliE Bench: Reading the haul...")
+    print("=========================================")
+    for path, source in pairs(rippedScripts) do
+        print("[SCRIPT] " .. path)
+        print("--- SOURCE START ---")
+        print(source)
+        print("--- SOURCE END ---")
     end
-end)
+    print("=========================================")
+    print("olliE Bench: Haul complete. " .. #rippedScripts .. " scripts extracted to olliE_rips/ folder.")
+end
 
-print("olliE Bench: Local automation active.")
+print("olliE Bench: Deep fry complete. Type 'ReadStolen()' in the console to read the haul.")
