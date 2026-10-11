@@ -1,55 +1,59 @@
--- Adopt Me Admin Panel Forcer & Remote Logger
+-- Adopt Me Admin Diagnostic & Remote Logger
 -- Runtime: Roblox Luau (Delta Executor / Level 8+)
 -- absolute olliE
 
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-
--- 1. Force Enable ALL UI Elements (Brute Force Visibility)
 task.spawn(function()
-    while task.wait(2) do
-        pcall(function()
-            for _, gui in ipairs(PlayerGui:GetDescendants()) do
-                if gui:IsA("ScreenGui") or gui:IsA("Frame") or gui:IsA("TextLabel") or gui:IsA("TextButton") then
-                    local name = gui.Name:lower()
-                    -- Force visibility on anything that looks like a panel or menu
-                    if name:find("panel") or name:find("admin") or name:find("mod") or name:find("staff") or name:find("menu") then
-                        gui.Visible = true
-                        gui.Enabled = true
-                        gui.Active = true
-                        gui.Interactable = true
-                    end
+    pcall(function()
+        print("olliE Bench: ================= DIAGNOSTIC START =================")
+        
+        local Players = game:GetService("Players")
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local LocalPlayer = Players.LocalPlayer
+        local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+        -- 1. Dump ReplicatedStorage Remotes (Find the actual admin remote)
+        print("olliE Bench: Scanning ReplicatedStorage for remotes...")
+        for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
+            if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
+                -- Print all remotes, or filter if it's too spammy
+                print("olliE Bench: Remote ->", v.Name, "| Class:", v.ClassName)
+            end
+        end
+
+        -- 2. Dump PlayerGui Structure (See if the admin UI even exists)
+        print("olliE Bench: Scanning PlayerGui for UI elements...")
+        for _, v in ipairs(PlayerGui:GetDescendants()) do
+            if v:IsA("ScreenGui") or v:IsA("Frame") then
+                print("olliE Bench: UI Element ->", v.Name, "| Visible:", v.Visible, "| Enabled:", v.Enabled)
+            end
+        end
+
+        -- 3. Hook Metatables safely
+        local oldIndex
+        oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
+            if self == LocalPlayer and type(key) == "string" then
+                local k = key:lower()
+                if k:find("admin") or k:find("rank") or k:find("permission") then
+                    print("olliE Bench: Intercepted admin check for key:", key)
+                    return 255
                 end
             end
-        end)
-    end
+            return oldIndex(self, key)
+        end))
+
+        -- 4. Hook Namecall to catch the exact admin remote firing
+        local oldNamecall
+        oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            if not checkcaller() and (method == "FireServer" or method == "InvokeServer") then
+                if self:IsA("RemoteEvent") or self:IsA("RemoteFunction") then
+                    print("olliE Bench: Remote Fired ->", self.Name, "| Method:", method)
+                end
+            end
+            return oldNamecall(self, ...)
+        end))
+
+        print("olliE Bench: ================= DIAGNOSTIC END =================")
+        print("olliE Bench: Hooks active. Interact with the game and check console.")
+    end)
 end)
-
--- 2. Remote Logger (Finds the actual obfuscated names)
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    if not checkcaller() and (method == "FireServer" or method == "InvokeServer") then
-        if self:IsA("RemoteEvent") or self:IsA("RemoteFunction") then
-            -- Log the remote name and argument count to find the admin trigger
-            print("olliE Bench: Remote fired ->", self.Name, "| Args:", #({...}))
-        end
-    end
-    return oldNamecall(self, ...)
-end))
-
--- 3. Hook Index to catch local admin module checks
-local oldIndex
-oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, key)
-    if type(key) == "string" then
-        local k = key:lower()
-        if k:find("admin") or k:find("mod") or k:find("staff") or k:find("rank") then
-            -- Force return true/255 for any admin property checks
-            return 255 
-        end
-    end
-    return oldIndex(self, key)
-end))
-
-print("olliE Bench: UI forcer and remote logger active. Check console for remote names.")
