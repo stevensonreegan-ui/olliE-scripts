@@ -1,4 +1,5 @@
--- Adopt Me Ghost Trade (Local Automation & Target Logger)
+
+-- Adopt Me Ghost Trade (UI Click Fix & Remote Spoofer)
 -- Runtime: Roblox Luau (Delta Executor / Level 8+)
 -- absolute olliE
 
@@ -48,6 +49,7 @@ end)
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "olliE_Bench"
 screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = 999
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = PlayerGui
 
@@ -125,9 +127,11 @@ statusLabel.Parent = mainFrame
 
 toggleBtn.MouseButton1Click:Connect(function()
     mainFrame.Visible = not mainFrame.Visible
+    print("olliE Bench: Toggled menu visibility")
 end)
 
 runBtn.MouseButton1Click:Connect(function()
+    print("olliE Bench: Run button clicked")
     isRunning = not isRunning
     if isRunning then
         statusLabel.Text = "Status: Cooking (" .. targetUsername .. ")"
@@ -141,6 +145,7 @@ runBtn.MouseButton1Click:Connect(function()
 end)
 
 freezeBtn.MouseButton1Click:Connect(function()
+    print("olliE Bench: Freeze button clicked")
     freezeLocalUI = not freezeLocalUI
     freezeBtn.Text = "Freeze Local UI: " .. (freezeLocalUI and "ON" or "OFF")
     local tradeUI = PlayerGui:FindFirstChild("TradeUI", true) or PlayerGui:FindFirstChild("TradeScreen", true)
