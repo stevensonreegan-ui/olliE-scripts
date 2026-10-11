@@ -1,4 +1,4 @@
--- Adopt Me Ghost Trade Payload Interceptor & Auto-Fire
+-- Adopt Me Ghost Trade Remote Spoofer & UI Lock
 -- Runtime: Roblox Luau (Delta Executor / Level 8+)
 -- absolute olliE
 
@@ -7,7 +7,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
+-- State
 local isRunning = false
+local freezeLocalUI = false
 local lastTradeRemote = nil
 local lastTradeArgs = nil
 
@@ -16,19 +18,22 @@ local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local method = getnamecallmethod()
     if not checkcaller() and (method == "FireServer" or method == "InvokeServer") then
-        local remoteName = self.Name:lower()
-        if remoteName:find("trade") and (remoteName:find("accept") or remoteName:find("confirm") or remoteName:find("request")) then
-            lastTradeRemote = self
-            lastTradeArgs = {...}
-            
-            -- Mutate arguments to force acceptance
+        if self:IsA("RemoteEvent") or self:IsA("RemoteFunction") then
             local args = {...}
+            -- Intercept trade payloads by inspecting table arguments (bypasses obfuscated remote names)
             for i, v in ipairs(args) do
                 if type(v) == "table" then
-                    v.accepted = true
-                    v.confirmed = true
-                elseif type(v) == "boolean" then
-                    args[i] = true
+                    if v.TradeId or v.Action or v.accepted ~= nil or v.confirmed ~= nil then
+                        lastTradeRemote = self
+                        lastTradeArgs = args
+                        
+                        -- Mutate arguments to force acceptance and confirmation
+                        v.accepted = true
+                        v.confirmed = true
+                        if v.Action == "RequestTrade" or v.Action == "AcceptTrade" then
+                            v.Action = "ConfirmTrade"
+                        end
+                    end
                 end
             end
             return oldNamecall(self, table.unpack(args))
@@ -39,18 +44,32 @@ end))
 
 -- Auto-Fire Loop: Pushes the captured payload through regardless of UI state
 task.spawn(function()
-    while isRunning and task.wait(0.3) do
-        pcall(function()
-            if lastTradeRemote and lastTradeArgs then
+    while task.wait(0.2) do
+        if isRunning and lastTradeRemote and lastTradeArgs then
+            pcall(function()
                 if lastTradeRemote:IsA("RemoteEvent") then
-                    pcall(function() lastTradeRemote:FireServer(table.unpack(lastTradeArgs)) end)
+                    lastTradeRemote:FireServer(table.unpack(lastTradeArgs))
                 elseif lastTradeRemote:IsA("RemoteFunction") then
-                    pcall(function() lastTradeRemote:InvokeServer(table.unpack(lastTradeArgs)) end)
+                    lastTradeRemote:InvokeServer(table.unpack(lastTradeArgs))
                 end
-            end
-        end)
+            end)
+        end
     end
 end))
+
+-- Local UI Freeze Logic (Cannot freeze remote player, only local)
+local function toggleLocalFreeze(enabled)
+    freezeLocalUI = enabled
+    local tradeUI = PlayerGui:FindFirstChild("TradeUI", true) or PlayerGui:FindFirstChild("TradeScreen", true)
+    if tradeUI then
+        for _, descendant in ipairs(tradeUI:GetDescendants()) do
+            if descendant:IsA("GuiButton") or descendant:IsA("TextButton") then
+                descendant.Active = not enabled
+                descendant.Interactable = not enabled
+            end
+        end
+    end
+end
 
 -- GUI Construction
 local screenGui = Instance.new("ScreenGui")
@@ -72,8 +91,8 @@ toggleBtn.Parent = screenGui
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 200, 0, 150)
-mainFrame.Position = UDim2.new(0, 70, 0.5, -75)
+mainFrame.Size = UDim2.new(0, 220, 0, 180)
+mainFrame.Position = UDim2.new(0, 70, 0.5, -90)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 mainFrame.BorderSizePixel = 0
 mainFrame.Visible = false
@@ -90,14 +109,25 @@ titleLabel.Parent = mainFrame
 
 local runBtn = Instance.new("TextButton")
 runBtn.Name = "RunBtn"
-runBtn.Size = UDim2.new(0.8, 0, 0, 40)
-runBtn.Position = UDim2.new(0.1, 0, 0.5, -20)
+runBtn.Size = UDim2.new(0.9, 0, 0, 40)
+runBtn.Position = UDim2.new(0.05, 0, 0.25, 0)
 runBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 runBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 runBtn.Text = "Start Ghost Trade"
 runBtn.Font = Enum.Font.Gotham
 runBtn.TextSize = 14
 runBtn.Parent = mainFrame
+
+local freezeBtn = Instance.new("TextButton")
+freezeBtn.Name = "FreezeBtn"
+freezeBtn.Size = UDim2.new(0.9, 0, 0, 40)
+freezeBtn.Position = UDim2.new(0.05, 0, 0.5, 0)
+freezeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+freezeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+freezeBtn.Text = "Freeze Local UI: OFF"
+freezeBtn.Font = Enum.Font.Gotham
+freezeBtn.TextSize = 14
+freezeBtn.Parent = mainFrame
 
 local statusLabel = Instance.new("TextLabel")
 statusLabel.Size = UDim2.new(1, 0, 0, 20)
@@ -126,3 +156,11 @@ runBtn.MouseButton1Click:Connect(function()
         lastTradeArgs = nil
     end
 end)
+
+freezeBtn.MouseButton1Click:Connect(function()
+    freezeLocalUI = not freezeLocalUI
+    freezeBtn.Text = "Freeze Local UI: " .. (freezeLocalUI and "ON" or "OFF")
+    toggleLocalFreeze(freezeLocalUI)
+end)
+
+print("olliE Bench: Remote hook active.")
