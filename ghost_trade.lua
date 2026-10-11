@@ -1,4 +1,4 @@
--- Roblox Slow-Roast Dumper (Memory Safe & Iterative)
+-- Roblox Slow-Roast Dumper (Single-Item Queue & Memory Safe)
 -- Runtime: Roblox Luau (Delta Executor / Level 8+)
 -- absolute olliE
 
@@ -92,9 +92,8 @@ end
 local totalItems = #queue
 print("olliE Bench: Queue built. " .. totalItems .. " items (" .. totalScripts .. " scripts).")
 
--- Processing (Memory Safe)
+-- Single-Item Processing Loop (Maximum Slow-Roast)
 local processed = 0
-local batchSize = 50 -- Smaller batches to let the engine breathe
 local startTime = tick()
 local manifestLog = ""
 
@@ -102,31 +101,27 @@ statusLabel.Text = "Cooking... 0%"
 
 local head = 1
 while head <= totalItems do
-    local batchCount = math.min(batchSize, totalItems - head + 1)
-    
-    for i = 1, batchCount do
-        local inst = queue[head]
-        head = head + 1
-        local path = inst:GetFullName()
-        
-        if inst:IsA("LuaSourceContainer") then
-            local ok, source = pcall(function() return inst.Source end)
-            -- Skip bloated scripts that will choke the string allocator
-            if ok and source and #source < 500000 then
-                local safeName = string.gsub(path, "[^%w%-%_%.]", "_")
-                pcall(writefile, "olliE_rips/" .. safeName .. ".lua", source)
-                manifestLog = manifestLog .. "[SCRIPT] " .. path .. "\n"
-            else
-                manifestLog = manifestLog .. "[SKIP] " .. path .. " (Too large or locked)\n"
-            end
+    local inst = queue[head]
+    head = head + 1
+    local path = inst:GetFullName()
+
+    if inst:IsA("LuaSourceContainer") then
+        local ok, source = pcall(function() return inst.Source end)
+        -- Skip bloated scripts that will choke the string allocator
+        if ok and source and #source < 500000 then
+            local safeName = string.gsub(path, "[^%w%-%_%.]", "_")
+            pcall(writefile, "olliE_rips/" .. safeName .. ".lua", source)
+            manifestLog = manifestLog .. "[SCRIPT] " .. path .. "\n"
         else
-            manifestLog = manifestLog .. "[OBJ] " .. path .. " (" .. inst.ClassName .. ")\n"
+            manifestLog = manifestLog .. "[SKIP] " .. path .. " (Too large or locked)\n"
         end
-        
-        processed = processed + 1
+    else
+        manifestLog = manifestLog .. "[OBJ] " .. path .. " (" .. inst.ClassName .. ")\n"
     end
 
-    -- Update UI & ETA
+    processed = processed + 1
+
+    -- Update UI & ETA every single item
     local progress = processed / totalItems
     local elapsed = tick() - startTime
     local eta = progress > 0 and (elapsed / progress) * (1 - progress) or 0
@@ -135,7 +130,8 @@ while head <= totalItems do
     statusLabel.Text = string.format("Cooking... %d%% (%d/%d)", math.floor(progress * 100), processed, totalItems)
     etaLabel.Text = string.format("ETA: %ds | Elapsed: %ds", math.ceil(eta), math.floor(elapsed))
 
-    task.wait(0.1) -- Crucial yield to prevent script timeout and engine choke
+    -- The ultimate yield. 0.15 seconds per item. Let the engine breathe.
+    task.wait(0.15)
 end
 
 -- Save manifest
