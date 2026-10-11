@@ -1,8 +1,7 @@
--- Roblox Slow-Roast Asset Dumper & Progress UI
+-- Roblox Slow-Roast Dumper (Memory Safe & Iterative)
 -- Runtime: Roblox Luau (Delta Executor / Level 8+)
 -- absolute olliE
 
-local HttpService = game:GetService("HttpService")
 local LocalPlayer = game:GetService("Players").LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
@@ -65,59 +64,65 @@ etaLabel.Font = Enum.Font.Gotham
 etaLabel.TextSize = 12
 etaLabel.Parent = mainFrame
 
--- Queue building
+-- Iterative Queue Building (No recursion stack overflow)
 local queue = {}
 local totalScripts = 0
 local totalObjects = 0
 
-local function buildQueue(inst)
-    table.insert(queue, inst)
-    if inst:IsA("LuaSourceContainer") then
-        totalScripts = totalScripts + 1
-    else
-        totalObjects = totalObjects + 1
-    end
-    for _, child in ipairs(inst:GetChildren()) do
-        pcall(function() buildQueue(child) end)
-    end
-end
-
-print("olliE Bench: Building queue...")
 for _, serviceName in ipairs(ServicesToRip) do
     local service = game:GetService(serviceName)
     if service then
-        pcall(function() buildQueue(service) end)
+        local head = 1
+        queue[head] = service
+        while head <= #queue do
+            local inst = queue[head]
+            head = head + 1
+            if inst:IsA("LuaSourceContainer") then
+                totalScripts = totalScripts + 1
+            else
+                totalObjects = totalObjects + 1
+            end
+            for _, child in ipairs(inst:GetChildren()) do
+                queue[#queue + 1] = child
+            end
+        end
     end
 end
 
 local totalItems = #queue
 print("olliE Bench: Queue built. " .. totalItems .. " items (" .. totalScripts .. " scripts).")
 
--- Processing
-local manifest = {}
-local rippedScripts = {}
+-- Processing (Memory Safe)
 local processed = 0
-local batchSize = 150 -- Yield every 150 items to prevent script timeout
+local batchSize = 50 -- Smaller batches to let the engine breathe
 local startTime = tick()
+local manifestLog = ""
 
 statusLabel.Text = "Cooking... 0%"
 
-while #queue > 0 do
-    local batchCount = math.min(batchSize, #queue)
+local head = 1
+while head <= totalItems do
+    local batchCount = math.min(batchSize, totalItems - head + 1)
+    
     for i = 1, batchCount do
-        local inst = table.remove(queue, 1)
-        local data = { Name = inst.Name, ClassName = inst.ClassName, Path = inst:GetFullName() }
-
+        local inst = queue[head]
+        head = head + 1
+        local path = inst:GetFullName()
+        
         if inst:IsA("LuaSourceContainer") then
-            pcall(function()
-                local source = inst.Source
-                data.Source = source
-                rippedScripts[data.Path] = source
-                local safeName = string.gsub(data.Path, "[^%w%-%_%.]", "_")
-                pcall(function() writefile("olliE_rips/" .. safeName .. ".lua", source) end)
-            end)
+            local ok, source = pcall(function() return inst.Source end)
+            -- Skip bloated scripts that will choke the string allocator
+            if ok and source and #source < 500000 then
+                local safeName = string.gsub(path, "[^%w%-%_%.]", "_")
+                pcall(writefile, "olliE_rips/" .. safeName .. ".lua", source)
+                manifestLog = manifestLog .. "[SCRIPT] " .. path .. "\n"
+            else
+                manifestLog = manifestLog .. "[SKIP] " .. path .. " (Too large or locked)\n"
+            end
+        else
+            manifestLog = manifestLog .. "[OBJ] " .. path .. " (" .. inst.ClassName .. ")\n"
         end
-        table.insert(manifest, data)
+        
         processed = processed + 1
     end
 
@@ -130,26 +135,19 @@ while #queue > 0 do
     statusLabel.Text = string.format("Cooking... %d%% (%d/%d)", math.floor(progress * 100), processed, totalItems)
     etaLabel.Text = string.format("ETA: %ds | Elapsed: %ds", math.ceil(eta), math.floor(elapsed))
 
-    task.wait(0.05) -- The crucial yield to prevent engine crash
+    task.wait(0.1) -- Crucial yield to prevent script timeout and engine choke
 end
 
 -- Save manifest
-pcall(function()
-    writefile("olliE_rips/manifest.json", HttpService:JSONEncode(manifest))
-end)
+pcall(writefile, "olliE_rips/manifest.txt", manifestLog)
 
 statusLabel.Text = "Cooking complete. 100%"
 etaLabel.Text = "Total time: " .. math.floor(tick() - startTime) .. "s"
 
 _G.ReadStolen = function()
-    print("olliE Bench: Reading the haul...")
-    for path, source in pairs(rippedScripts) do
-        print("[SCRIPT] " .. path)
-        print("--- SOURCE START ---")
-        print(source)
-        print("--- SOURCE END ---")
-    end
-    print("olliE Bench: Haul complete. " .. #rippedScripts .. " scripts extracted.")
+    print("olliE Bench: Reading manifest log...")
+    print(manifestLog)
+    print("olliE Bench: Haul complete. Check olliE_rips/ folder.")
 end
 
 print("olliE Bench: Slow-roast complete. Type 'ReadStolen()' in console.")
